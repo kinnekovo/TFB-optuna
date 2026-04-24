@@ -28,7 +28,9 @@ def _resolve_config_path(config_path: str) -> str:
     return os.path.join(CONFIG_PATH, config_path)
 
 
-def evaluate_params(params, config_data, data_name_list, model_name, strategy_args):
+def evaluate_params(
+    params, config_data, data_name_list, model_name, strategy_args, save_path
+):
     # 每个 trial 使用配置副本，避免多个 trial 之间相互污染。
     data_config = copy.deepcopy(config_data["data_config"])
     model_config = copy.deepcopy(config_data["model_config"])
@@ -36,6 +38,7 @@ def evaluate_params(params, config_data, data_name_list, model_name, strategy_ar
 
     # 使用传入的数据集名称列表运行 HPO。
     data_config["data_name_list"] = data_name_list
+    evaluation_config["save_path"] = save_path
 
     model_config["models"] = [{
         "adapter": None,
@@ -66,7 +69,14 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
     try:
         study = optuna.create_study(direction="minimize", study_name="hyperparameter_optimization")
         study.optimize(
-            lambda trial: evaluate_params(sample_params(model_name, trial), config_data, data_name_list, model_name, {}),
+            lambda trial: evaluate_params(
+                sample_params(model_name, trial),
+                config_data,
+                data_name_list,
+                model_name,
+                {},
+                save_path,
+            ),
             n_trials=n_trials)
     finally:
         ParallelBackend().close(force=True)
