@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import re
+import shutil
+import tempfile
 from typing import List
 
 import optuna
@@ -64,7 +66,19 @@ def _get_default_model_params(config_data: dict, model_name: str) -> dict:
     for model in models:
         if model.get("model_name") == model_name:
             return copy.deepcopy(model.get("model_hyper_params") or {})
-    return {}
+    # Fallback to recommended default params in config when models list is empty.
+    return copy.deepcopy(
+        config_data.get("model_config", {}).get("recommend_model_hyper_params", {}) or {}
+    )
+
+
+def _cleanup_log_files(log_files: List[str]) -> None:
+    for file_path in log_files:
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except OSError:
+            logger.warning("Failed to remove temporary log file: %s", file_path)
 
 
 def evaluate_params(
@@ -87,7 +101,9 @@ def evaluate_params(
 
     # 进行模型训练并评估
     log_files = pipeline(data_config, model_config, evaluation_config)
-    return _extract_objective_from_logs(log_files)
+    objective = _extract_objective_from_logs(log_files)
+    _cleanup_log_files(log_files)
+    return objective
 
 
 def run_optuna_search(config_path: str, data_name_list: List[str], model_name: str, save_path: str, n_trials: int = 10,
@@ -97,6 +113,9 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
     with open(resolved_config_path, "r") as f:
         config_data = json.load(f)
     output_dir = _resolve_output_dir(save_path)
+
+    # HPO trial 输出写入临时目录，避免在最终结果目录产生大量中间日志文件。
+    temp_eval_dir = tempfile.mkdtemp(prefix="hpo_eval_")
 
     # HPO 流程依赖 ParallelBackend，全局初始化后使用串行后端以避免额外依赖。
     ParallelBackend().init(backend="sequential")
@@ -108,7 +127,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
             data_name_list,
             model_name,
             {},
-            save_path,
+            temp_eval_dir,
         )
         logger.info("Baseline objective value: %.6f", baseline_value)
 
@@ -120,11 +139,12 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
                 data_name_list,
                 model_name,
                 {},
-                save_path,
+                temp_eval_dir,
             ),
             n_trials=n_trials)
     finally:
         ParallelBackend().close(force=True)
+        shutil.rmtree(temp_eval_dir, ignore_errors=True)
 
     # 保存最优超参数
     best_params = study.best_params
