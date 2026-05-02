@@ -3,12 +3,30 @@ import json
 import logging
 import os
 import sys
-from typing import List, Optional
+from typing import Optional
 
 from ts_benchmark.hpo import run_optuna_search
 
 # 确保可以导入 ts_benchmark 包
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
+
+def _parse_forecast_lengths(s: Optional[str]):
+    """Parse a string like '1,24,168' or '1 24 168' into List[int]. Returns None if s is None."""
+    if s is None:
+        return None
+    s = str(s).strip()
+    if s == "":
+        return None
+    # accept comma or whitespace separators
+    if "," in s:
+        parts = [p.strip() for p in s.split(",") if p.strip()]
+    else:
+        parts = [p.strip() for p in s.split() if p.strip()]
+    try:
+        return [int(p) for p in parts]
+    except ValueError:
+        raise argparse.ArgumentTypeError("forecast-lengths must be comma-or-space-separated integers, e.g. 1,24,168")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -61,6 +79,12 @@ def main() -> None:
         default=None,
         help="Random seed for reproducibility.",
     )
+    parser.add_argument(
+        "--forecast-lengths",
+        type=_parse_forecast_lengths,
+        default=None,
+        help="Comma-or-space-separated list of forecast lengths, e.g. 1,24,168. If omitted, read from config.",
+    )
 
     args = parser.parse_args()
 
@@ -78,6 +102,7 @@ def main() -> None:
         save_path=args.save_path,
         n_trials=args.n_trials,
         seed=args.seed,
+        forecast_lengths=args.forecast_lengths,
     )
 
     # Pretty-print the best trial results to stdout.
