@@ -117,10 +117,7 @@ def evaluate_params(
         model_config = copy.deepcopy(base_model_config)
         evaluation_config = copy.deepcopy(base_evaluation_config)
 
-        if eval_mode == "val":
-            # HPO 阶段仅在 val 上评估，避免使用 test 指标选参。
-            evaluation_config.setdefault("strategy_args", {})["hpo_eval_mode"] = "val"
-        elif eval_mode != "test":
+        if eval_mode not in {"val", "test"}:
             raise ValueError(f"Unsupported eval_mode: {eval_mode}")
 
         # 使用传入的数据集名称列表运行 HPO。
@@ -130,6 +127,9 @@ def evaluate_params(
         # 同时部分深度模型会从 model hyper-params 里的 horizon/pred_len 读取输出长度。
         strategy_args = copy.deepcopy(base_strategy_args)
         strategy_args["horizon"] = h
+        if eval_mode == "val":
+            # HPO 阶段仅在 val 上评估，避免使用 test 指标选参。
+            strategy_args["hpo_eval_mode"] = "val"
         evaluation_config["strategy_args"] = strategy_args
 
         # 为每个 horizon 使用独立子目录，避免互相覆盖
