@@ -76,7 +76,7 @@ def _cleanup_log_files(log_files: List[str]) -> None:
 
 
 def evaluate_params(
-    params, config_data, data_name_list, model_name, strategy_args, save_path, forecast_lengths: Optional[List[int]] = None, return_details: bool = False
+    params, config_data, data_name_list, model_name, strategy_args, save_path, forecast_lengths: Optional[List[int]] = None, return_details: bool = False, eval_mode: str = "val"
 ):
     """
     Evaluate `params` by running the pipeline for each horizon in `forecast_lengths` and
@@ -116,6 +116,12 @@ def evaluate_params(
         data_config = copy.deepcopy(base_data_config)
         model_config = copy.deepcopy(base_model_config)
         evaluation_config = copy.deepcopy(base_evaluation_config)
+
+        if eval_mode == "val":
+            # HPO 阶段仅在 val 上评估，避免使用 test 指标选参。
+            evaluation_config.setdefault("strategy_args", {})["hpo_eval_mode"] = "val"
+        elif eval_mode != "test":
+            raise ValueError(f"Unsupported eval_mode: {eval_mode}")
 
         # 使用传入的数据集名称列表运行 HPO。
         data_config["data_name_list"] = data_name_list
@@ -235,6 +241,18 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
             forecast_lengths,
             True,
         )
+
+        final_test_value, final_test_per_horizon = evaluate_params(
+            best_params,
+            config_data,
+            data_name_list,
+            model_name,
+            {},
+            temp_eval_dir2,
+            forecast_lengths,
+            True,
+            eval_mode="test",
+        )
     finally:
         # Close the backend we (possibly) re-initialized and clean up temp files.
         ParallelBackend().close(force=True)
@@ -251,6 +269,8 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         "best_value": best_value,
         "best_value_rechecked": best_value_rechecked,
         "best_per_horizon": best_per_horizon,
+        "final_test_value": final_test_value,
+        "final_test_per_horizon": final_test_per_horizon,
         "best_params": best_params
     }
 
