@@ -67,15 +67,17 @@ class FixedForecast(ForecastingStrategy):
         use_val_as_eval = self.strategy_config.get("hpo_eval_mode") == "val"
 
         if use_val_as_eval:
-            train_size = int(len(train_valid_data) * train_ratio_in_tv)
-            if train_size <= 0 or train_size >= len(train_valid_data):
+            # 为了和 test 评估可比，val 长度固定为 horizon，而不是整个剩余片段。
+            val_length = horizon
+            train_size = len(train_valid_data) - val_length
+            if train_size <= 0:
                 raise ValueError(
-                    "Invalid train_ratio_in_tv for val-based HPO eval: it must create non-empty train and val splits."
+                    "Invalid split for val-based HPO eval: train_valid_data must be longer than horizon."
                 )
             train_data, val_data = split_time(train_valid_data, train_size)
             target_train_data, exog_train_data = split_channel(train_data, target_channel)
             target_eval_data, _ = split_channel(val_data, target_channel)
-            eval_horizon = len(target_eval_data)
+            eval_horizon = horizon
             covariates = {"exog": exog_train_data}
             fit_series = target_train_data
             fit_ratio = 1.0
