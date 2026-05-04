@@ -130,6 +130,9 @@ def evaluate_params(
         if eval_mode == "val":
             # HPO 阶段仅在 val 上评估，避免使用 test 指标选参。
             strategy_args["hpo_eval_mode"] = "val"
+        else:
+            # 显式移除配置中可能残留的 hpo_eval_mode，确保 test 评估不会误走 val 路径。
+            strategy_args.pop("hpo_eval_mode", None)
         evaluation_config["strategy_args"] = strategy_args
 
         # 为每个 horizon 使用独立子目录，避免互相覆盖
