@@ -248,6 +248,19 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
             True,
         )
 
+        final_test_value_no_refit, final_test_per_horizon_no_refit = evaluate_params(
+            best_params,
+            config_data,
+            data_name_list,
+            model_name,
+            {},
+            temp_eval_dir2,
+            forecast_lengths,
+            True,
+            eval_mode="test",
+            refit_train_valid_for_test=False,
+        )
+
         final_test_value, final_test_per_horizon = evaluate_params(
             best_params,
             config_data,
@@ -276,6 +289,8 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         "best_value": best_value,
         "best_value_rechecked": best_value_rechecked,
         "best_per_horizon": best_per_horizon,
+        "final_test_value_no_refit": final_test_value_no_refit,
+        "final_test_per_horizon_no_refit": final_test_per_horizon_no_refit,
         "final_test_value": final_test_value,
         "final_test_per_horizon": final_test_per_horizon,
         "best_params": best_params
