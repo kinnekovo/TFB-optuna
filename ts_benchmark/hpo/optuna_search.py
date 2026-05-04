@@ -76,7 +76,7 @@ def _cleanup_log_files(log_files: List[str]) -> None:
 
 
 def evaluate_params(
-    params, config_data, data_name_list, model_name, strategy_args, save_path, forecast_lengths: Optional[List[int]] = None, return_details: bool = False, eval_mode: str = "val"
+    params, config_data, data_name_list, model_name, strategy_args, save_path, forecast_lengths: Optional[List[int]] = None, return_details: bool = False, eval_mode: str = "val", refit_train_valid_for_test: bool = False
 ):
     """
     Evaluate `params` by running the pipeline for each horizon in `forecast_lengths` and
@@ -133,6 +133,9 @@ def evaluate_params(
         else:
             # 显式移除配置中可能残留的 hpo_eval_mode，确保 test 评估不会误走 val 路径。
             strategy_args.pop("hpo_eval_mode", None)
+            # Refit 阶段：按协议在完整 train_valid 上训练，再测试一次。
+            if refit_train_valid_for_test:
+                strategy_args["train_ratio_in_tv"] = 1.0
         evaluation_config["strategy_args"] = strategy_args
 
         # 为每个 horizon 使用独立子目录，避免互相覆盖
@@ -255,6 +258,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
             forecast_lengths,
             True,
             eval_mode="test",
+            refit_train_valid_for_test=True,
         )
     finally:
         # Close the backend we (possibly) re-initialized and clean up temp files.
