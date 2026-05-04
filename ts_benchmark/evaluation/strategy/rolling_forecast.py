@@ -271,31 +271,48 @@ class RollingForecast(ForecastingStrategy):
 
         train_length, test_length = self._get_split_lens(series, meta_info, tv_ratio)
         train_valid_data, test_data = split_time(series, train_length)
+        use_val_as_eval = self.strategy_config.get("hpo_eval_mode") == "val"
 
-        target_train_valid_data, exog_data = split_channel(
-            train_valid_data, target_channel
-        )
-        covariates_train = {}
-        covariates_train["exog"] = exog_data
+        if use_val_as_eval:
+            train_size = int(len(train_valid_data) * train_ratio_in_tv)
+            if train_size <= 0 or train_size >= len(train_valid_data):
+                raise ValueError(
+                    "Invalid train_ratio_in_tv for val-based HPO eval: it must create non-empty train and val splits."
+                )
+            train_data, val_data = split_time(train_valid_data, train_size)
+            fit_series, exog_fit = split_channel(train_data, target_channel)
+            eval_series = pd.concat([train_data, val_data], axis=0)
+            eval_train_length = len(train_data)
+            eval_test_length = len(val_data)
+            fit_ratio = 1.0
+        else:
+            fit_series, exog_fit = split_channel(train_valid_data, target_channel)
+            eval_series = series
+            eval_train_length = train_length
+            eval_test_length = test_length
+            fit_ratio = train_ratio_in_tv
+
+        target_eval_series, exog_eval_series = split_channel(eval_series, target_channel)
+        covariates_train = {"exog": exog_fit}
 
         start_fit_time = time.time()
         fit_method = model.forecast_fit if hasattr(model, "forecast_fit") else model.fit
         fit_method(
-            target_train_valid_data,
+            fit_series,
             covariates=covariates_train,
-            train_ratio_in_tv=train_ratio_in_tv,
+            train_ratio_in_tv=fit_ratio,
         )
         end_fit_time = time.time()
 
-        eval_scaler = self._get_eval_scaler(target_train_valid_data, train_ratio_in_tv)
+        eval_scaler = self._get_eval_scaler(fit_series, fit_ratio)
 
-        index_list = self._get_index(train_length, test_length, horizon, stride)
+        index_list = self._get_index(eval_train_length, eval_test_length, horizon, stride)
         total_inference_time = 0
         all_test_results = []
         all_rolling_actual = []
         all_rolling_predict = []
         for i, index in itertools.islice(enumerate(index_list), num_rollings):
-            train, rest = split_time(series, index)
+            train, rest = split_time(eval_series, index)
             test, _ = split_channel(split_time(rest, horizon)[0], target_channel)
             target_train, exog_train = split_channel(train, target_channel)
             covariates_forecast = {}
@@ -309,7 +326,7 @@ class RollingForecast(ForecastingStrategy):
             total_inference_time += end_inference_time - start_inference_time
 
             single_series_result = self.evaluator.evaluate(
-                test.to_numpy(), predict, eval_scaler, target_train_valid_data.values
+                test.to_numpy(), predict, eval_scaler, fit_series.values
             )
             inference_data = pd.DataFrame(
                 predict, columns=test.columns, index=test.index
@@ -367,27 +384,44 @@ class RollingForecast(ForecastingStrategy):
 
         train_length, test_length = self._get_split_lens(series, meta_info, tv_ratio)
         train_valid_data, test_data = split_time(series, train_length)
+        use_val_as_eval = self.strategy_config.get("hpo_eval_mode") == "val"
 
-        target_train_valid_data, exog_train_valid_data = split_channel(
-            train_valid_data, target_channel
-        )
-        target4batch, exog_data4batch = split_channel(series, target_channel)
+        if use_val_as_eval:
+            train_size = int(len(train_valid_data) * train_ratio_in_tv)
+            if train_size <= 0 or train_size >= len(train_valid_data):
+                raise ValueError(
+                    "Invalid train_ratio_in_tv for val-based HPO eval: it must create non-empty train and val splits."
+                )
+            train_data, val_data = split_time(train_valid_data, train_size)
+            fit_series, exog_fit = split_channel(train_data, target_channel)
+            eval_series = pd.concat([train_data, val_data], axis=0)
+            eval_train_length = len(train_data)
+            eval_test_length = len(val_data)
+            fit_ratio = 1.0
+        else:
+            fit_series, exog_fit = split_channel(train_valid_data, target_channel)
+            eval_series = series
+            eval_train_length = train_length
+            eval_test_length = test_length
+            fit_ratio = train_ratio_in_tv
+
+        target4batch, exog_data4batch = split_channel(eval_series, target_channel)
         covariates_train, covariates4batch = {}, {}
-        covariates_train["exog"] = exog_train_valid_data
+        covariates_train["exog"] = exog_fit
         covariates4batch["exog"] = exog_data4batch
 
         start_fit_time = time.time()
         fit_method = model.forecast_fit if hasattr(model, "forecast_fit") else model.fit
         fit_method(
-            target_train_valid_data,
+            fit_series,
             covariates=covariates_train,
-            train_ratio_in_tv=train_ratio_in_tv,
+            train_ratio_in_tv=fit_ratio,
         )
         end_fit_time = time.time()
 
-        eval_scaler = self._get_eval_scaler(target_train_valid_data, train_ratio_in_tv)
+        eval_scaler = self._get_eval_scaler(fit_series, fit_ratio)
 
-        index_list = self._get_index(train_length, test_length, horizon, stride)
+        index_list = self._get_index(eval_train_length, eval_test_length, horizon, stride)
         index_list = index_list[:num_rollings]
 
         batch_maker = RollingForecastEvalBatchMaker(
@@ -417,7 +451,7 @@ class RollingForecast(ForecastingStrategy):
                 target,
                 predicts,
                 eval_scaler,
-                target_train_valid_data.values,
+                fit_series.values,
             )
             all_test_results.append(single_series_results)
         single_series_results = np.mean(np.stack(all_test_results), axis=0).tolist()
