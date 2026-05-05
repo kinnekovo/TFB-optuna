@@ -34,25 +34,21 @@ def _resolve_output_dir(save_path: str) -> str:
         return save_path
     return os.path.join(ROOT_PATH, "result", save_path)
 
-# 读取评估日志，找 mse、mse_norm、mae 等列，取均值作为 Optuna 要最小化的目标值
+# 读取评估日志，固定 mse 作为 Optuna 要最小化的目标值
 def _extract_objective_from_logs(log_files: List[str]) -> float:
     if not log_files:
         raise ValueError("No log files returned by pipeline.")
+
     df = read_record_file(log_files[0])
-    preferred_metrics = [
-        "mse",
-        "mse_norm",
-        "mae",
-        "mae_norm",
-        "rmse",
-        "rmse_norm",
-        "mape",
-        "mape_norm",
-    ]
-    for metric in preferred_metrics:
-        if metric in df.columns:
-            return float(df[metric].mean())
-    raise ValueError(f"No supported metric columns found in log file: {df.columns.tolist()}")
+
+    TARGET_METRIC = "mse_norm"  # 或 "mse"
+
+    if TARGET_METRIC not in df.columns:
+        raise ValueError(
+            f"{TARGET_METRIC} not found in log file. Available: {df.columns.tolist()}"
+        )
+
+    return float(df[TARGET_METRIC].mean())
 
 
 def _get_default_model_params(config_data: dict, model_name: str) -> dict:
