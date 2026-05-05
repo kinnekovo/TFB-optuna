@@ -67,6 +67,12 @@ def _get_default_model_params(config_data: dict, model_name: str) -> dict:
     )
 
 
+def _merge_params(base: dict, override: dict) -> dict:
+    merged = copy.deepcopy(base or {})
+    merged.update(copy.deepcopy(override or {}))
+    return merged
+
+
 def _cleanup_log_files(log_files: List[str]) -> None:
     for file_path in log_files:
         try:
@@ -209,7 +215,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         study = optuna.create_study(direction="minimize", study_name="hyperparameter_optimization")
         study.optimize(
             lambda trial: evaluate_params(
-                sample_params(model_name, trial),
+                _merge_params(baseline_params, sample_params(model_name, trial)),
                 config_data,
                 data_name_list,
                 model_name,
@@ -224,6 +230,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
 
     # 保存最优超参数
     best_params = study.best_params
+    full_best_params = _merge_params(baseline_params, best_params)
     best_value = study.best_value
 
     # The ParallelBackend was closed after trial evaluation; ensure it's initialized
@@ -233,7 +240,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
     temp_eval_dir2 = tempfile.mkdtemp(prefix="hpo_eval_best_")
     try:
         best_value_rechecked, best_per_horizon = evaluate_params(
-            best_params,
+            full_best_params,
             config_data,
             data_name_list,
             model_name,
@@ -244,7 +251,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         )
 
         final_test_value, final_test_per_horizon = evaluate_params(
-            best_params,
+            full_best_params,
             config_data,
             data_name_list,
             model_name,
@@ -273,7 +280,8 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         "best_per_horizon": best_per_horizon,
         "final_test_value": final_test_value,
         "final_test_per_horizon": final_test_per_horizon,
-        "best_params": best_params
+        "best_params": best_params,
+        "best_params_full": full_best_params
     }
 
     os.makedirs(output_dir, exist_ok=True)
