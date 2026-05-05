@@ -1,0 +1,13 @@
+{
+  "model_name": "olinear.OLinear",
+  "series_name": "ETTh1.csv",
+  "objective": "val_loss",
+  "best_value": Infinity,
+  "best_params": {
+    "lr": 0.00312999570339406,
+    "dropout": 0.3244987142656074,
+    "d_model": 256,
+    "d_ff": 256,
+    "e_layers": 1
+  }
+}

@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import tempfile
+from datetime import datetime
 from typing import List, Dict, Optional
 
 import optuna
@@ -258,6 +259,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         "model_name": model_name,
         "series_name": data_name_list[0] if data_name_list else None,
         "objective": "val_loss",
+        "n_trials": n_trials,
         "forecast_lengths": forecast_lengths,
         "baseline_params": baseline_params,
         "baseline_value": baseline_value,
@@ -272,7 +274,17 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
 
     os.makedirs(output_dir, exist_ok=True)
 
-    with open(os.path.join(output_dir, f"{model_name}_{data_name_list[0]}_best_params.json"), "w") as f:
+    base_filename = f"{model_name}_{data_name_list[0]}_best_params.json"
+    output_path = os.path.join(output_dir, base_filename)
+    if os.path.exists(output_path):
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        output_path = os.path.join(
+            output_dir,
+            f"{model_name}_{data_name_list[0]}_best_params_{timestamp}.json",
+        )
+
+    with open(output_path, "w") as f:
         json.dump(best_params_json, f, indent=2)
 
+    best_params_json["output_file"] = output_path
     return best_params_json
