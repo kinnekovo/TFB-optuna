@@ -10,13 +10,6 @@ from ts_benchmark.hpo import run_optuna_search
 # 确保可以导入 ts_benchmark 包
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
-
-
-def _build_auto_save_path(data_name_list, model_name: str) -> str:
-    primary_series = (data_name_list[0] if data_name_list else "unknown_series").replace(".csv", "")
-    model_short_name = model_name.split(".")[-1] if model_name else "unknown_model"
-    return os.path.join("hpo", primary_series, model_short_name)
-
 def _parse_forecast_lengths(s: Optional[str]):
     """Parse a string like '1,24,168' or '1 24 168' into List[int]. Returns None if s is None."""
     if s is None:
@@ -62,10 +55,10 @@ def main() -> None:
     parser.add_argument(
         "--save-path",
         type=str,
-        default=None,
+        default="",
         help=(
             "Relative path under the result directory to store HPO outputs. "
-            "If omitted, auto-generate: 'result/hpo/<series>/<model_class>/'."
+            "If empty, results will be saved directly under 'result/'."
         ),
     )
     parser.add_argument(
@@ -102,19 +95,15 @@ def main() -> None:
     )
     logging.getLogger("optuna").setLevel(logging.WARNING)
 
-    save_path = args.save_path or _build_auto_save_path(args.data_name_list, args.model_name)
-
     result = run_optuna_search(
         config_path=args.config_path,
         data_name_list=args.data_name_list,
         model_name=args.model_name,
-        save_path=save_path,
+        save_path=args.save_path,
         n_trials=args.n_trials,
         seed=args.seed,
         forecast_lengths=args.forecast_lengths,
     )
-
-    logging.info("HPO results will be saved under: %s", save_path)
 
     # Pretty-print the best trial results to stdout.
     print(json.dumps(result, indent=2))

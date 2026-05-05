@@ -2,15 +2,12 @@ import copy
 import json
 import logging
 import os
-import random
 import re
 import shutil
 import tempfile
-from datetime import datetime
 from typing import List, Dict, Optional
 
 import optuna
-import numpy as np
 
 from ts_benchmark.common.constant import CONFIG_PATH, ROOT_PATH
 from ts_benchmark.pipeline import pipeline
@@ -67,27 +64,6 @@ def _get_default_model_params(config_data: dict, model_name: str) -> dict:
     return copy.deepcopy(
         config_data.get("model_config", {}).get("recommend_model_hyper_params", {}) or {}
     )
-
-
-def _set_global_seed(seed: Optional[int]) -> None:
-    if seed is None:
-        return
-    random.seed(seed)
-    np.random.seed(seed)
-    try:
-        import torch
-
-        torch.manual_seed(seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(seed)
-    except Exception:
-        pass
-
-
-def _merge_params(base: dict, override: dict) -> dict:
-    merged = copy.deepcopy(base or {})
-    merged.update(copy.deepcopy(override or {}))
-    return merged
 
 
 def _cleanup_log_files(log_files: List[str]) -> None:
@@ -210,8 +186,6 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         else:
             forecast_lengths = [1]
 
-    _set_global_seed(seed)
-
     # HPO trial 输出写入临时目录，避免在最终结果目录产生大量中间日志文件。
     temp_eval_dir = tempfile.mkdtemp(prefix="hpo_eval_")
 
@@ -231,11 +205,10 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         )
         logger.info("Baseline objective value (aggregate): %.6f", baseline_value)
 
-        sampler = optuna.samplers.TPESampler(seed=seed) if seed is not None else None
-        study = optuna.create_study(direction="minimize", study_name="hyperparameter_optimization", sampler=sampler)
+        study = optuna.create_study(direction="minimize", study_name="hyperparameter_optimization")
         study.optimize(
             lambda trial: evaluate_params(
-                _merge_params(baseline_params, sample_params(model_name, trial)),
+                sample_params(model_name, trial),
                 config_data,
                 data_name_list,
                 model_name,
@@ -250,7 +223,6 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
 
     # 保存最优超参数
     best_params = study.best_params
-    full_best_params = _merge_params(baseline_params, best_params)
     best_value = study.best_value
 
     # The ParallelBackend was closed after trial evaluation; ensure it's initialized
@@ -260,7 +232,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
     temp_eval_dir2 = tempfile.mkdtemp(prefix="hpo_eval_best_")
     try:
         best_value_rechecked, best_per_horizon = evaluate_params(
-            full_best_params,
+            best_params,
             config_data,
             data_name_list,
             model_name,
@@ -271,7 +243,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         )
 
         final_test_value, final_test_per_horizon = evaluate_params(
-            full_best_params,
+            best_params,
             config_data,
             data_name_list,
             model_name,
@@ -286,16 +258,10 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         ParallelBackend().close(force=True)
         shutil.rmtree(temp_eval_dir2, ignore_errors=True)
 
-    best_params_full_per_horizon = {
-        str(h): _merge_params(full_best_params, {"horizon": h, "pred_len": h})
-        for h in forecast_lengths
-    }
-
     best_params_json = {
         "model_name": model_name,
         "series_name": data_name_list[0] if data_name_list else None,
         "objective": "val_loss",
-        "n_trials": n_trials,
         "forecast_lengths": forecast_lengths,
         "baseline_params": baseline_params,
         "baseline_value": baseline_value,
@@ -305,24 +271,12 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         "best_per_horizon": best_per_horizon,
         "final_test_value": final_test_value,
         "final_test_per_horizon": final_test_per_horizon,
-        "best_params": best_params,
-        "best_params_full": full_best_params,
-        "best_params_full_per_horizon": best_params_full_per_horizon
+        "best_params": best_params
     }
 
     os.makedirs(output_dir, exist_ok=True)
 
-    base_filename = f"{model_name}_{data_name_list[0]}_best_params.json"
-    output_path = os.path.join(output_dir, base_filename)
-    if os.path.exists(output_path):
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        output_path = os.path.join(
-            output_dir,
-            f"{model_name}_{data_name_list[0]}_best_params_{timestamp}.json",
-        )
-
-    with open(output_path, "w") as f:
+    with open(os.path.join(output_dir, f"{model_name}_{data_name_list[0]}_best_params.json"), "w") as f:
         json.dump(best_params_json, f, indent=2)
 
-    best_params_json["output_file"] = output_path
     return best_params_json

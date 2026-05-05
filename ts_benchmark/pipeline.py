@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 from dataclasses import dataclass
+import json
+import logging
 from functools import reduce
 from operator import and_
 from typing import List, Dict, Type, Optional
@@ -15,6 +17,8 @@ from ts_benchmark.evaluation.evaluate_model import eval_model
 from ts_benchmark.models import get_models
 from ts_benchmark.recording import save_log
 from ts_benchmark.utils.parallel import ParallelBackend
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -136,6 +140,14 @@ def pipeline(
     data_server.start_async()
 
     # modeling
+    model_entries = model_config.get("models", []) or []
+    for idx, model_entry in enumerate(model_entries):
+        logger.info(
+            "Pipeline model[%d] config: %s",
+            idx,
+            json.dumps(model_entry, ensure_ascii=False, sort_keys=True),
+        )
+
     model_factory_list = get_models(model_config)
 
     result_list = [

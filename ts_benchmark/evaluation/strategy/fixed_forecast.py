@@ -87,8 +87,7 @@ class FixedForecast(ForecastingStrategy):
             eval_horizon = horizon
             covariates = {"exog": exog_train_valid_data}
             fit_series = target_train_valid_data
-            # For test-time evaluation, train on the full train_valid split before testing.
-            fit_ratio = 1.0
+            fit_ratio = train_ratio_in_tv
 
         start_fit_time = time.time()
         fit_method = model.forecast_fit if hasattr(model, "forecast_fit") else model.fit
