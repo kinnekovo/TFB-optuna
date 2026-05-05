@@ -271,9 +271,20 @@ class RollingForecast(ForecastingStrategy):
 
         train_length, test_length = self._get_split_lens(series, meta_info, tv_ratio)
         train_valid_data, test_data = split_time(series, train_length)
+        use_val_as_eval = self.strategy_config.get("hpo_eval_mode") == "val"
+
+        fit_source = train_valid_data
+        eval_source = test_data
+        fit_ratio = train_ratio_in_tv
+        if use_val_as_eval:
+            train_size = int(len(train_valid_data) * train_ratio_in_tv)
+            if train_size <= 0 or train_size >= len(train_valid_data):
+                raise ValueError("Invalid train_ratio_in_tv for val-based HPO eval in rolling_forecast.")
+            fit_source, eval_source = split_time(train_valid_data, train_size)
+            fit_ratio = 1.0
 
         target_train_valid_data, exog_data = split_channel(
-            train_valid_data, target_channel
+            fit_source, target_channel
         )
         covariates_train = {}
         covariates_train["exog"] = exog_data
@@ -283,19 +294,21 @@ class RollingForecast(ForecastingStrategy):
         fit_method(
             target_train_valid_data,
             covariates=covariates_train,
-            train_ratio_in_tv=train_ratio_in_tv,
+            train_ratio_in_tv=fit_ratio,
         )
         end_fit_time = time.time()
 
-        eval_scaler = self._get_eval_scaler(target_train_valid_data, train_ratio_in_tv)
+        eval_scaler = self._get_eval_scaler(target_train_valid_data, fit_ratio)
 
-        index_list = self._get_index(train_length, test_length, horizon, stride)
+        eval_len = len(eval_source)
+        index_list = self._get_index(len(fit_source), eval_len, horizon, stride)
         total_inference_time = 0
         all_test_results = []
         all_rolling_actual = []
         all_rolling_predict = []
         for i, index in itertools.islice(enumerate(index_list), num_rollings):
-            train, rest = split_time(series, index)
+            rolling_base = pd.concat([fit_source, eval_source], axis=0)
+            train, rest = split_time(rolling_base, index)
             test, _ = split_channel(split_time(rest, horizon)[0], target_channel)
             target_train, exog_train = split_channel(train, target_channel)
             covariates_forecast = {}
@@ -367,11 +380,23 @@ class RollingForecast(ForecastingStrategy):
 
         train_length, test_length = self._get_split_lens(series, meta_info, tv_ratio)
         train_valid_data, test_data = split_time(series, train_length)
+        use_val_as_eval = self.strategy_config.get("hpo_eval_mode") == "val"
+
+        fit_source = train_valid_data
+        eval_source = test_data
+        fit_ratio = train_ratio_in_tv
+        if use_val_as_eval:
+            train_size = int(len(train_valid_data) * train_ratio_in_tv)
+            if train_size <= 0 or train_size >= len(train_valid_data):
+                raise ValueError("Invalid train_ratio_in_tv for val-based HPO eval in rolling_forecast.")
+            fit_source, eval_source = split_time(train_valid_data, train_size)
+            fit_ratio = 1.0
 
         target_train_valid_data, exog_train_valid_data = split_channel(
-            train_valid_data, target_channel
+            fit_source, target_channel
         )
-        target4batch, exog_data4batch = split_channel(series, target_channel)
+        rolling_base = pd.concat([fit_source, eval_source], axis=0)
+        target4batch, exog_data4batch = split_channel(rolling_base, target_channel)
         covariates_train, covariates4batch = {}, {}
         covariates_train["exog"] = exog_train_valid_data
         covariates4batch["exog"] = exog_data4batch
@@ -381,13 +406,14 @@ class RollingForecast(ForecastingStrategy):
         fit_method(
             target_train_valid_data,
             covariates=covariates_train,
-            train_ratio_in_tv=train_ratio_in_tv,
+            train_ratio_in_tv=fit_ratio,
         )
         end_fit_time = time.time()
 
-        eval_scaler = self._get_eval_scaler(target_train_valid_data, train_ratio_in_tv)
+        eval_scaler = self._get_eval_scaler(target_train_valid_data, fit_ratio)
 
-        index_list = self._get_index(train_length, test_length, horizon, stride)
+        eval_len = len(eval_source)
+        index_list = self._get_index(len(fit_source), eval_len, horizon, stride)
         index_list = index_list[:num_rollings]
 
         batch_maker = RollingForecastEvalBatchMaker(
