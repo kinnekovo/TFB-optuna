@@ -2,6 +2,7 @@ import copy
 import json
 import logging
 import os
+import random
 import re
 import shutil
 import tempfile
@@ -9,6 +10,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 
 import optuna
+import numpy as np
 
 from ts_benchmark.common.constant import CONFIG_PATH, ROOT_PATH
 from ts_benchmark.pipeline import pipeline
@@ -65,6 +67,21 @@ def _get_default_model_params(config_data: dict, model_name: str) -> dict:
     return copy.deepcopy(
         config_data.get("model_config", {}).get("recommend_model_hyper_params", {}) or {}
     )
+
+
+def _set_global_seed(seed: Optional[int]) -> None:
+    if seed is None:
+        return
+    random.seed(seed)
+    np.random.seed(seed)
+    try:
+        import torch
+
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+    except Exception:
+        pass
 
 
 def _merge_params(base: dict, override: dict) -> dict:
@@ -193,6 +210,8 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         else:
             forecast_lengths = [1]
 
+    _set_global_seed(seed)
+
     # HPO trial 输出写入临时目录，避免在最终结果目录产生大量中间日志文件。
     temp_eval_dir = tempfile.mkdtemp(prefix="hpo_eval_")
 
@@ -212,7 +231,8 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         )
         logger.info("Baseline objective value (aggregate): %.6f", baseline_value)
 
-        study = optuna.create_study(direction="minimize", study_name="hyperparameter_optimization")
+        sampler = optuna.samplers.TPESampler(seed=seed) if seed is not None else None
+        study = optuna.create_study(direction="minimize", study_name="hyperparameter_optimization", sampler=sampler)
         study.optimize(
             lambda trial: evaluate_params(
                 _merge_params(baseline_params, sample_params(model_name, trial)),
