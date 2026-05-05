@@ -262,6 +262,13 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         ParallelBackend().close(force=True)
         shutil.rmtree(temp_eval_dir2, ignore_errors=True)
 
+    best_params_for_benchmark = {}
+    for h in forecast_lengths:
+        params = _merge_params(baseline_params, best_params)
+        params["horizon"] = h
+        params["pred_len"] = h
+        best_params_for_benchmark[str(h)] = json.dumps(params, separators=(",", ":"), ensure_ascii=False)
+
     best_params_json = {
         "model_name": model_name,
         "series_name": data_name_list[0] if data_name_list else None,
@@ -277,7 +284,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         "final_test_value": final_test_value,
         "final_test_per_horizon": final_test_per_horizon,
         "best_params": best_params,
-        "best_params_full": full_best_params
+        "best_params_for_benchmark": best_params_for_benchmark
     }
 
     os.makedirs(output_dir, exist_ok=True)
