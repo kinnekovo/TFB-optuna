@@ -64,40 +64,59 @@ class FixedForecast(ForecastingStrategy):
             raise ValueError("The prediction step exceeds the data length")
 
         train_valid_data, test_data = split_time(series, train_length)
-        target_train_valid_data, exog_train_valid_data = split_channel(
-            train_valid_data, target_channel
-        )
-        target_test_data, _ = split_channel(test_data, target_channel)
-        covariates = {}
-        covariates["exog"] = exog_train_valid_data
+        use_val_as_eval = self.strategy_config.get("hpo_eval_mode") == "val"
+
+        if use_val_as_eval:
+            train_size = int(len(train_valid_data) * train_ratio_in_tv)
+            if train_size <= 0 or train_size >= len(train_valid_data):
+                raise ValueError(
+                    "Invalid train_ratio_in_tv for val-based HPO eval: it must create non-empty train and val splits."
+                )
+            train_data, val_data = split_time(train_valid_data, train_size)
+            target_train_data, exog_train_data = split_channel(train_data, target_channel)
+            target_eval_data, _ = split_channel(val_data, target_channel)
+            eval_horizon = len(target_eval_data)
+            covariates = {"exog": exog_train_data}
+            fit_series = target_train_data
+            fit_ratio = 1.0
+        else:
+            target_train_valid_data, exog_train_valid_data = split_channel(
+                train_valid_data, target_channel
+            )
+            target_eval_data, _ = split_channel(test_data, target_channel)
+            eval_horizon = horizon
+            covariates = {"exog": exog_train_valid_data}
+            fit_series = target_train_valid_data
+            # For test-time evaluation, train on the full train_valid split before testing.
+            fit_ratio = 1.0
 
         start_fit_time = time.time()
         fit_method = model.forecast_fit if hasattr(model, "forecast_fit") else model.fit
         fit_method(
-            target_train_valid_data,
+            fit_series,
             covariates=covariates,
-            train_ratio_in_tv=train_ratio_in_tv,
+            train_ratio_in_tv=fit_ratio,
         )
         end_fit_time = time.time()
         predicted = model.forecast(
-            horizon, target_train_valid_data, covariates=covariates
+            eval_horizon, fit_series, covariates=covariates
         )
         end_inference_time = time.time()
 
         single_series_results, log_info = self.evaluator.evaluate_with_log(
-            target_test_data.to_numpy(),
+            target_eval_data.to_numpy(),
             predicted,
             # TODO: add configs to control scaling behavior
-            self._get_eval_scaler(target_train_valid_data, train_ratio_in_tv),
-            target_train_valid_data.values,
+            self._get_eval_scaler(fit_series, fit_ratio),
+            fit_series.values,
         )
         inference_data = pd.DataFrame(
-            predicted, columns=target_test_data.columns, index=target_test_data.index
+            predicted, columns=target_eval_data.columns, index=target_eval_data.index
         )
 
         save_true_pred = self._get_scalar_config_value("save_true_pred", series_name)
         actual_data_encoded = (
-            self._encode_data(target_test_data) if save_true_pred else np.nan
+            self._encode_data(target_eval_data) if save_true_pred else np.nan
         )
         inference_data_encoded = (
             self._encode_data(inference_data) if save_true_pred else np.nan

@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import tempfile
+from datetime import datetime
 from typing import List, Dict, Optional
 
 import optuna
@@ -34,25 +35,21 @@ def _resolve_output_dir(save_path: str) -> str:
         return save_path
     return os.path.join(ROOT_PATH, "result", save_path)
 
-# 读取评估日志，找 mse、mse_norm、mae 等列，取均值作为 Optuna 要最小化的目标值
+# 读取评估日志，固定 mse 作为 Optuna 要最小化的目标值
 def _extract_objective_from_logs(log_files: List[str]) -> float:
     if not log_files:
         raise ValueError("No log files returned by pipeline.")
+
     df = read_record_file(log_files[0])
-    preferred_metrics = [
-        "mse",
-        "mse_norm",
-        "mae",
-        "mae_norm",
-        "rmse",
-        "rmse_norm",
-        "mape",
-        "mape_norm",
-    ]
-    for metric in preferred_metrics:
-        if metric in df.columns:
-            return float(df[metric].mean())
-    raise ValueError(f"No supported metric columns found in log file: {df.columns.tolist()}")
+
+    TARGET_METRIC = "mse_norm"  # 或 "mse"
+
+    if TARGET_METRIC not in df.columns:
+        raise ValueError(
+            f"{TARGET_METRIC} not found in log file. Available: {df.columns.tolist()}"
+        )
+
+    return float(df[TARGET_METRIC].mean())
 
 
 def _get_default_model_params(config_data: dict, model_name: str) -> dict:
@@ -66,6 +63,12 @@ def _get_default_model_params(config_data: dict, model_name: str) -> dict:
     )
 
 
+def _merge_params(base: dict, override: dict) -> dict:
+    merged = copy.deepcopy(base or {})
+    merged.update(copy.deepcopy(override or {}))
+    return merged
+
+
 def _cleanup_log_files(log_files: List[str]) -> None:
     for file_path in log_files:
         try:
@@ -76,7 +79,7 @@ def _cleanup_log_files(log_files: List[str]) -> None:
 
 
 def evaluate_params(
-    params, config_data, data_name_list, model_name, strategy_args, save_path, forecast_lengths: Optional[List[int]] = None, return_details: bool = False
+    params, config_data, data_name_list, model_name, strategy_args, save_path, forecast_lengths: Optional[List[int]] = None, return_details: bool = False, eval_mode: str = "val"
 ):
     """
     Evaluate `params` by running the pipeline for each horizon in `forecast_lengths` and
@@ -117,6 +120,9 @@ def evaluate_params(
         model_config = copy.deepcopy(base_model_config)
         evaluation_config = copy.deepcopy(base_evaluation_config)
 
+        if eval_mode not in {"val", "test"}:
+            raise ValueError(f"Unsupported eval_mode: {eval_mode}")
+
         # 使用传入的数据集名称列表运行 HPO。
         data_config["data_name_list"] = data_name_list
 
@@ -124,6 +130,9 @@ def evaluate_params(
         # 同时部分深度模型会从 model hyper-params 里的 horizon/pred_len 读取输出长度。
         strategy_args = copy.deepcopy(base_strategy_args)
         strategy_args["horizon"] = h
+        if eval_mode == "val":
+            # HPO 阶段仅在 val 上评估，避免使用 test 指标选参。
+            strategy_args["hpo_eval_mode"] = "val"
         evaluation_config["strategy_args"] = strategy_args
 
         # 为每个 horizon 使用独立子目录，避免互相覆盖
@@ -202,7 +211,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         study = optuna.create_study(direction="minimize", study_name="hyperparameter_optimization")
         study.optimize(
             lambda trial: evaluate_params(
-                sample_params(model_name, trial),
+                _merge_params(baseline_params, sample_params(model_name, trial)),
                 config_data,
                 data_name_list,
                 model_name,
@@ -217,6 +226,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
 
     # 保存最优超参数
     best_params = study.best_params
+    full_best_params = _merge_params(baseline_params, best_params)
     best_value = study.best_value
 
     # The ParallelBackend was closed after trial evaluation; ensure it's initialized
@@ -226,7 +236,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
     temp_eval_dir2 = tempfile.mkdtemp(prefix="hpo_eval_best_")
     try:
         best_value_rechecked, best_per_horizon = evaluate_params(
-            best_params,
+            full_best_params,
             config_data,
             data_name_list,
             model_name,
@@ -235,15 +245,35 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
             forecast_lengths,
             True,
         )
+
+        final_test_value, final_test_per_horizon = evaluate_params(
+            full_best_params,
+            config_data,
+            data_name_list,
+            model_name,
+            {},
+            temp_eval_dir2,
+            forecast_lengths,
+            True,
+            eval_mode="test",
+        )
     finally:
         # Close the backend we (possibly) re-initialized and clean up temp files.
         ParallelBackend().close(force=True)
         shutil.rmtree(temp_eval_dir2, ignore_errors=True)
 
+    best_params_for_benchmark = {}
+    for h in forecast_lengths:
+        params = _merge_params(baseline_params, best_params)
+        params["horizon"] = h
+        params["pred_len"] = h
+        best_params_for_benchmark[str(h)] = json.dumps(params, separators=(",", ":"), ensure_ascii=False)
+
     best_params_json = {
         "model_name": model_name,
         "series_name": data_name_list[0] if data_name_list else None,
         "objective": "val_loss",
+        "n_trials": n_trials,
         "forecast_lengths": forecast_lengths,
         "baseline_params": baseline_params,
         "baseline_value": baseline_value,
@@ -251,12 +281,25 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
         "best_value": best_value,
         "best_value_rechecked": best_value_rechecked,
         "best_per_horizon": best_per_horizon,
-        "best_params": best_params
+        "final_test_value": final_test_value,
+        "final_test_per_horizon": final_test_per_horizon,
+        "best_params": best_params,
+        "best_params_for_benchmark": best_params_for_benchmark
     }
 
     os.makedirs(output_dir, exist_ok=True)
 
-    with open(os.path.join(output_dir, f"{model_name}_{data_name_list[0]}_best_params.json"), "w") as f:
+    base_filename = f"{model_name}_{data_name_list[0]}_best_params.json"
+    output_path = os.path.join(output_dir, base_filename)
+    if os.path.exists(output_path):
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        output_path = os.path.join(
+            output_dir,
+            f"{model_name}_{data_name_list[0]}_best_params_{timestamp}.json",
+        )
+
+    with open(output_path, "w") as f:
         json.dump(best_params_json, f, indent=2)
 
+    best_params_json["output_file"] = output_path
     return best_params_json
