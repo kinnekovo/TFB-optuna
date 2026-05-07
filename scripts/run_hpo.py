@@ -112,6 +112,7 @@ def main() -> None:
         n_trials=args.n_trials,
         seed=args.seed,
         forecast_lengths=args.forecast_lengths,
+        adapter=args.adapter,
     )
 
     logging.info("HPO results will be saved under: %s", save_path)
