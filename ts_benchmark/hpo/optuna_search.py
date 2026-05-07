@@ -79,7 +79,9 @@ def _cleanup_log_files(log_files: List[str]) -> None:
 
 
 def evaluate_params(
-    params, config_data, data_name_list, model_name, strategy_args, save_path, forecast_lengths: Optional[List[int]] = None, return_details: bool = False, eval_mode: str = "val"
+        params, config_data, data_name_list, model_name, strategy_args, save_path,
+        forecast_lengths: Optional[List[int]] = None,
+        return_details: bool = False, eval_mode: str = "val", adapter: Optional[str] = None
 ):
     """
     Evaluate `params` by running the pipeline for each horizon in `forecast_lengths` and
@@ -145,7 +147,7 @@ def evaluate_params(
         model_hyper_params["horizon"] = h
         model_hyper_params["pred_len"] = h
         model_config["models"] = [{
-            "adapter": None,
+            "adapter": adapter,
             "model_name": model_name,
             "model_hyper_params": model_hyper_params
         }]
@@ -168,7 +170,7 @@ def evaluate_params(
 
 
 def run_optuna_search(config_path: str, data_name_list: List[str], model_name: str, save_path: str, n_trials: int = 10,
-                      seed: int = None, forecast_lengths: Optional[List[int]] = None):
+                      seed: int = None, forecast_lengths: Optional[List[int]] = None, adapter: Optional[str] = None):
     # 加载配置文件（支持绝对路径、Windows 绝对路径、相对于 config 目录的路径）
     resolved_config_path = _resolve_config_path(config_path)
     with open(resolved_config_path, "r") as f:
@@ -218,6 +220,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
                 {},
                 temp_eval_dir,
                 forecast_lengths,
+                adapter=adapter,
             ),
             n_trials=n_trials)
     finally:
@@ -244,6 +247,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
             temp_eval_dir2,
             forecast_lengths,
             True,
+            adapter=adapter,
         )
 
         final_test_value, final_test_per_horizon = evaluate_params(
@@ -256,6 +260,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
             forecast_lengths,
             True,
             eval_mode="test",
+            adapter=adapter,
         )
     finally:
         # Close the backend we (possibly) re-initialized and clean up temp files.
