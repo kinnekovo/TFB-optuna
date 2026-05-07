@@ -37,6 +37,7 @@ MODEL_HYPER_PARAMS = {
     "patch_len": 16,
     "stride": 8,
     "dropout": 0.1,
+    "r_dropout": 0.1,
     "batch_size": 32,
     "lr": 0.0001,
     "num_epochs": 100,
