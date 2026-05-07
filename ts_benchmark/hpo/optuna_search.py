@@ -79,9 +79,8 @@ def _cleanup_log_files(log_files: List[str]) -> None:
 
 
 def evaluate_params(
-        params, config_data, data_name_list, model_name, strategy_args, save_path,
-        forecast_lengths: Optional[List[int]] = None,
-        return_details: bool = False, eval_mode: str = "val", adapter: Optional[str] = None
+    params, config_data, data_name_list, model_name, strategy_args, save_path, forecast_lengths: Optional[List[int]] = None,
+    *, return_details: bool = False, eval_mode: str = "val", adapter: Optional[str] = None
 ):
     """
     Evaluate `params` by running the pipeline for each horizon in `forecast_lengths` and
@@ -206,7 +205,8 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
             {},
             temp_eval_dir,
             forecast_lengths,
-            True,
+            return_details=True,
+            adapter=adapter,
         )
         logger.info("Baseline objective value (aggregate): %.6f", baseline_value)
 
@@ -243,11 +243,11 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
             config_data,
             data_name_list,
             model_name,
-            {},
-            temp_eval_dir2,
-            forecast_lengths,
-            True,
-            adapter=adapter,
+                {},
+                temp_eval_dir2,
+                forecast_lengths,
+                return_details=True,
+                adapter=adapter,
         )
 
         final_test_value, final_test_per_horizon = evaluate_params(
@@ -258,7 +258,7 @@ def run_optuna_search(config_path: str, data_name_list: List[str], model_name: s
             {},
             temp_eval_dir2,
             forecast_lengths,
-            True,
+            return_details=True,
             eval_mode="test",
             adapter=adapter,
         )
