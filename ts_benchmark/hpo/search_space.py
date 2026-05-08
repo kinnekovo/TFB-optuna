@@ -280,5 +280,126 @@ def sample_params(model_name: str, trial: optuna.trial.Trial) -> dict:
         raise NotImplementedError(
             f"time_series_library model {tsl_model} not implemented in search space."
         )
+    elif model_name == "timebase.TimeBase":
+        return {
+            "lr": trial.suggest_loguniform("lr", 1e-5, 1e-3),
+            "batch_size": trial.suggest_categorical("batch_size", [16, 32]),
+            "dropout": trial.suggest_float("dropout", 0.0, 0.3),
+            "d_model": trial.suggest_categorical("d_model", [32, 64]),
+            "patch_len": trial.suggest_categorical("patch_len", [8, 16]),
+            "period_len": trial.suggest_categorical("period_len", [24, 48]),
+            "basis_num": trial.suggest_categorical("basis_num", [4, 6, 8]),
+            "orthogonal_weight": trial.suggest_categorical("orthogonal_weight", [0.05, 0.1, 0.16]),
+        }
+    elif model_name == "timebridge.TimeBridge":
+        return {
+            "lr": trial.suggest_loguniform("lr", 1e-5, 1e-3),
+            "batch_size": trial.suggest_categorical("batch_size", [32, 64, 128]),
+            "d_model": trial.suggest_categorical("d_model", [16, 32, 64]),
+            "d_ff": trial.suggest_categorical("d_ff", [64, 128, 256]),
+            "n_heads": trial.suggest_categorical("n_heads", [2, 4, 8]),
+            "dropout": trial.suggest_float("dropout", 0.0, 0.3),
+            "attn_dropout": trial.suggest_float("attn_dropout", 0.0, 0.3),
+            "fc_dropout": trial.suggest_float("fc_dropout", 0.0, 0.3),
+            "period": trial.suggest_categorical("period", [12, 24, 48, 96]),
+            "num_p": trial.suggest_categorical("num_p", [1, 2, 4]),
+            "stable_len": trial.suggest_categorical("stable_len", [2, 3, 4, 6]),
+            "ia_layers": trial.suggest_int("ia_layers", 1, 3),
+            "pd_layers": trial.suggest_int("pd_layers", 1, 2),
+            "ca_layers": trial.suggest_int("ca_layers", 1, 3),
+            "revin": trial.suggest_categorical("revin", [0, 1]),
+            "individual": trial.suggest_categorical("individual", [False, True]),
+        }
+    elif model_name == "timefilter.TimeFilter":
+        return {
+            "lr": trial.suggest_loguniform("lr", 1e-5, 3e-3),
+            "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
+            "dropout": trial.suggest_float("dropout", 0.1, 0.5),
+
+            "d_model": trial.suggest_categorical("d_model", [256, 512]),
+            "d_ff": trial.suggest_categorical("d_ff", [512, 1024, 2048]),
+            "e_layers": trial.suggest_int("e_layers", 1, 3),
+            "n_heads": trial.suggest_categorical("n_heads", [2, 4, 8]),
+
+            "patch_len": trial.suggest_categorical("patch_len", [16, 24, 48, 96]),
+            "alpha": trial.suggest_categorical("alpha", [0.05, 0.1, 0.2]),
+            "top_p": trial.suggest_categorical("top_p", [0.3, 0.5, 0.7]),
+        }
+    elif model_name == "timekan.TimeKAN":
+        return {
+            "lr": trial.suggest_loguniform("lr", 1e-5, 3e-3),
+
+            "batch_size": trial.suggest_categorical(
+                "batch_size", [8, 16, 32]
+            ),
+
+            "dropout": trial.suggest_float(
+                "dropout", 0.0, 0.3
+            ),
+
+            "d_model": trial.suggest_categorical(
+                "d_model", [16, 32, 64]
+            ),
+
+            "d_ff": trial.suggest_categorical(
+                "d_ff", [32, 64, 128]
+            ),
+
+            "e_layers": trial.suggest_int(
+                "e_layers", 1, 3
+            ),
+
+            "n_heads": trial.suggest_categorical(
+                "n_heads", [2, 4, 8]
+            ),
+
+            "top_k": trial.suggest_categorical(
+                "top_k", [3, 5, 7]
+            ),
+
+            "num_kernels": trial.suggest_categorical(
+                "num_kernels", [4, 6, 8]
+            ),
+
+            "moving_avg": trial.suggest_categorical(
+                "moving_avg", [13, 25, 49]
+            ),
+
+            "down_sampling_layers": trial.suggest_categorical(
+                "down_sampling_layers", [1, 2, 3]
+            ),
+
+            "down_sampling_window": trial.suggest_categorical(
+                "down_sampling_window", [1, 2, 4]
+            ),
+
+            "channel_independence": trial.suggest_categorical(
+                "channel_independence", [0, 1]
+            ),
+        }
+    elif model_name == "timeperceiver.TimePerceiver":
+        return {
+            "lr": trial.suggest_loguniform("lr", 1e-5, 1e-3),
+            "batch_size": trial.suggest_categorical("batch_size", [16, 32]),
+            "dropout": trial.suggest_float("dropout", 0.0, 0.3),
+            "d_model": trial.suggest_categorical("d_model", [32, 64]),
+            "d_ff": trial.suggest_categorical("d_ff", [1024, 2048]),
+            "num_latents": trial.suggest_categorical("num_latents", [4, 8, 16]),
+            "latent_dim": trial.suggest_categorical("latent_dim", [64, 128]),
+            "latent_d_ff": trial.suggest_categorical("latent_d_ff", [128, 256]),
+            "patch_len": trial.suggest_categorical("patch_len", [8, 16]),
+            "stride": trial.suggest_categorical("stride", [4, 8]),
+        }
+    elif model_name == "xpatch.xPatch":
+        return {
+            "lr": trial.suggest_loguniform("lr", 1e-5, 1e-3),
+            "batch_size": trial.suggest_categorical("batch_size", [16, 32, 64]),
+            "patch_len": trial.suggest_categorical("patch_len", [8, 16, 32]),
+            "stride": trial.suggest_categorical("stride", [4, 8, 16]),
+            "alpha": trial.suggest_float("alpha", 0.1, 0.9),
+            "beta": trial.suggest_float("beta", 0.1, 0.9),
+            "ma_type": trial.suggest_categorical("ma_type", ["ema", "sma"]),
+            "revin": trial.suggest_categorical("revin", [0, 1]),
+        }
     else:
         raise NotImplementedError(f"Model {model_name} not implemented in search space.")
