@@ -113,6 +113,22 @@ def sample_params(model_name: str, trial: optuna.trial.Trial) -> dict:
 
             "deform_range": trial.suggest_categorical("deform_range", [0.1, 0.25, 0.5]),
         }
+    elif model_name == "moderntcn.ModernTCN":
+        return {
+            "lr": trial.suggest_loguniform("lr", 1e-5, 1e-3),
+            "batch_size": trial.suggest_categorical("batch_size", [32, 64, 128]),
+
+            "patch_size": trial.suggest_categorical("patch_size", [16]),
+            "stride": trial.suggest_categorical("stride", [8]),
+            "patch_stride": trial.suggest_categorical("patch_stride", [8]),
+
+            "ffn_ratio": trial.suggest_categorical("ffn_ratio", [1 ,2 ,4]),
+            "stem_ratio": trial.suggest_categorical("stem_ratio", [4 ,6 ,8]),
+            "downsample_ratio": trial.suggest_categorical("downsample_ratio", [2]),
+
+            "individual": trial.suggest_categorical("individual", [0]),
+            "revin": trial.suggest_categorical("revin", [1]),
+        }
     elif model_name == "patchmlp.PatchMLP":
         return {
             "lr": trial.suggest_loguniform("lr", 1e-5, 1e-3),
@@ -328,54 +344,18 @@ def sample_params(model_name: str, trial: optuna.trial.Trial) -> dict:
     elif model_name == "timekan.TimeKAN":
         return {
             "lr": trial.suggest_loguniform("lr", 1e-5, 3e-3),
-
-            "batch_size": trial.suggest_categorical(
-                "batch_size", [8, 16, 32]
-            ),
-
-            "dropout": trial.suggest_float(
-                "dropout", 0.0, 0.3
-            ),
-
-            "d_model": trial.suggest_categorical(
-                "d_model", [16, 32, 64]
-            ),
-
-            "d_ff": trial.suggest_categorical(
-                "d_ff", [32, 64, 128]
-            ),
-
-            "e_layers": trial.suggest_int(
-                "e_layers", 1, 3
-            ),
-
-            "n_heads": trial.suggest_categorical(
-                "n_heads", [2, 4, 8]
-            ),
-
-            "top_k": trial.suggest_categorical(
-                "top_k", [3, 5, 7]
-            ),
-
-            "num_kernels": trial.suggest_categorical(
-                "num_kernels", [4, 6, 8]
-            ),
-
-            "moving_avg": trial.suggest_categorical(
-                "moving_avg", [13, 25, 49]
-            ),
-
-            "down_sampling_layers": trial.suggest_categorical(
-                "down_sampling_layers", [1, 2, 3]
-            ),
-
-            "down_sampling_window": trial.suggest_categorical(
-                "down_sampling_window", [1, 2, 4]
-            ),
-
-            "channel_independence": trial.suggest_categorical(
-                "channel_independence", [0, 1]
-            ),
+            "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
+            "dropout": trial.suggest_float("dropout", 0.0, 0.3),
+            "d_model": trial.suggest_categorical("d_model", [16, 32, 64]),
+            "d_ff": trial.suggest_categorical("d_ff", [32, 64, 128]),
+            "e_layers": trial.suggest_int("e_layers", 1, 3),
+            "n_heads": trial.suggest_categorical("n_heads", [2, 4, 8]),
+            "top_k": trial.suggest_categorical("top_k", [3, 5, 7]),
+            "num_kernels": trial.suggest_categorical("num_kernels", [4, 6, 8]),
+            "moving_avg": trial.suggest_categorical("moving_avg", [13, 25, 49]),
+            "down_sampling_layers": trial.suggest_categorical("down_sampling_layers", [1, 2, 3]),
+            "down_sampling_window": trial.suggest_categorical("down_sampling_window", [1, 2, 4]),
+            "channel_independence": trial.suggest_categorical("channel_independence", [0, 1]),
         }
     elif model_name == "timeperceiver.TimePerceiver":
         return {
